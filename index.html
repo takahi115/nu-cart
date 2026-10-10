@@ -43,6 +43,7 @@
   .mv { display:flex; gap:4px; }
   .mv button { width:40px; height:40px; border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:8px; font-size:18px; line-height:1; padding:0; }
   .mv button:disabled { opacity:.3; }
+  .mall { font-weight:700; color:var(--blue); }
   .stamp { color:var(--sub); font-size:12px; margin-top:2px; }
 </style>
 </head>
@@ -54,12 +55,12 @@
 <div class="notice">
   <b>ポイントを付ける順番</b>（①→②の順で、同じブラウザで買う）
   <ol>
-    <li>先にYahoo!のカートを空にする</li>
-    <li>①を押してポイントサイトの案内に進み、ヤフショへ</li>
+    <li>先にそのストアのカートを空にする（ヤフショはYahoo!のカート）</li>
+    <li>①を押してポイントサイトの案内に進み、そのストアへ</li>
     <li>このページに戻って②で商品を開き、カートへ</li>
     <li>次の注文はまた①から（注文ごとに①からやり直す）</li>
   </ol>
-  <div class="stamp">Yahoo!ショッピングのアプリで開くと付かない可能性が高いので、ブラウザで開く。</div>
+  <div class="stamp">ストアのアプリで開くと付かない可能性が高いので、ブラウザで開く。</div>
 </div>
 <div id="err" class="err" hidden></div>
 <div id="list"></div>
@@ -138,7 +139,7 @@ function render(data) {
   root.textContent = '';
   var done = loadDone();
   if (!data.items.length) {
-    root.appendChild(el('div', 'empty', 'リストは空です。PCの買取価格チェッカーから送ってください。'));
+    root.appendChild(el('div', 'empty', 'リストは空です。PCの買取価格チェッカーから送ってください（ヤフショ・楽天・エディオン・ヤマダウェブコム・dショッピング対応）。'));
     return;
   }
   data.items.forEach(function (it, idx) {
@@ -158,8 +159,9 @@ function render(data) {
     head.appendChild(mv);
     card.appendChild(head);
     var meta = el('div', 'meta');
+    meta.appendChild(el('span', 'mall mall-' + (it.mall || 'yahoo'), it.mallLabel || 'ヤフショ'));
     meta.appendChild(el('span', null, yen(it.price)));
-    if (it.store) meta.appendChild(el('span', null, it.store));
+    if (it.store && it.store !== it.mallLabel) meta.appendChild(el('span', null, it.store));
     if (it.jan) meta.appendChild(el('span', null, 'JAN ' + it.jan));
     meta.appendChild(el('span', null, '追加 ' + it.addedLabel));
     card.appendChild(meta);
@@ -167,7 +169,7 @@ function render(data) {
     var row = el('div', 'row');
     var top = it.sites && it.sites[0];
     if (top) row.appendChild(link('a1', top.url, '① ' + top.name + ' 経由', '還元率 ' + top.rate + '%（' + it.ratesLabel + '時点）'));
-    else row.appendChild(link('a1', data.fallbackUrl, '① ポイントサイトを選ぶ', '還元率が取れなかったので一覧を開く'));
+    else row.appendChild(link('a1', it.fallbackUrl || data.fallbackUrl, '① ポイントサイトを選ぶ', '還元率が取れなかったので一覧を開く'));
     row.appendChild(link('a2', it.url, '② 商品を開く'));
     card.appendChild(row);
 
