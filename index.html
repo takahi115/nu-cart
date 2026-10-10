@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<base target="_blank">
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>νカート</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light dark; --bg:#f4f6fa; --card:#fff; --text:#1c1f26; --sub:#6b7280; --line:#e3e6ec; --warn-bg:#fff6dd; --warn-line:#f1dca0; --red:#c8102e; --blue:#1a6fe8; --danger:#a33; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14161b; --card:#1f232b; --text:#eceef2; --sub:#9aa3b2; --line:#323846; --warn-bg:#3a3319; --warn-line:#6b5d22; --danger:#ff8a8a; } }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--text); font-family:-apple-system,"Segoe UI","Hiragino Sans","Meiryo",sans-serif; line-height:1.5; max-width:760px; margin:0 auto; }
+  .top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; }
+  h1 { font-size:20px; margin:0; }
+  .btn-refresh { border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:8px; padding:8px 14px; font-size:14px; }
+  .notice { background:var(--warn-bg); border:1px solid var(--warn-line); border-radius:10px; padding:12px 14px; font-size:14px; margin-bottom:14px; }
+  .notice b { font-weight:700; }
+  .notice ol { margin:6px 0 0 18px; padding:0; }
+  .notice li { margin:2px 0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .card.done { opacity:.5; }
+  .name { font-weight:700; font-size:16px; word-break:break-all; }
+  .meta { color:var(--sub); font-size:13px; margin-top:4px; }
+  .meta span { margin-right:10px; white-space:nowrap; }
+  .row { display:flex; gap:8px; margin-top:12px; }
+  .row a { flex:1; text-align:center; text-decoration:none; color:#fff; font-weight:700; font-size:15px; padding:12px 6px; border-radius:10px; }
+  .a1 { background:var(--red); }
+  .a2 { background:var(--blue); }
+  .a1 small { display:block; font-weight:400; font-size:12px; opacity:.9; }
+  details { margin-top:8px; font-size:14px; }
+  details summary { color:var(--sub); cursor:pointer; padding:4px 0; }
+  details a { display:block; padding:6px 0; color:var(--blue); }
+  .foot { display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-size:14px; }
+  .foot label { display:flex; align-items:center; gap:8px; }
+  .foot input { width:20px; height:20px; }
+  .del { background:none; border:none; color:var(--danger); font-size:14px; padding:6px 0; }
+  .empty { text-align:center; color:var(--sub); padding:40px 0; }
+  .err { color:var(--danger); font-size:14px; margin:8px 0; }
+  .head { display:flex; align-items:flex-start; gap:8px; }
+  .head .name { flex:1; }
+  .mv { display:flex; gap:4px; }
+  .mv button { width:40px; height:40px; border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:8px; font-size:18px; line-height:1; padding:0; }
+  .mv button:disabled { opacity:.3; }
+  .stamp { color:var(--sub); font-size:12px; margin-top:2px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>νカート</h1>
+  <button class="btn-refresh" id="refresh" type="button">更新</button>
+</div>
+<div class="notice">
+  <b>ポイントを付ける順番</b>（①→②の順で、同じブラウザで買う）
+  <ol>
+    <li>先にYahoo!のカートを空にする</li>
+    <li>①を押してポイントサイトの案内に進み、ヤフショへ</li>
+    <li>このページに戻って②で商品を開き、カートへ</li>
+    <li>次の注文はまた①から（注文ごとに①からやり直す）</li>
+  </ol>
+  <div class="stamp">Yahoo!ショッピングのアプリで開くと付かない可能性が高いので、ブラウザで開く。</div>
+</div>
+<div id="err" class="err" hidden></div>
+<div id="list"></div>
+<script>
+// @@KEY_BEGIN
+// 合言葉はURLの #k=… から読んで端末(localStorage)に保存する。ページの中には書かない。
+// #…部分はサーバーに送られない。ホーム画面に追加する時にも使えるよう、アドレスバーには残す。
+var STORE_KEY = 'nu_cart_key_v1';
+var GAS_URL = "https://script.google.com/macros/s/AKfycbz8PNYmGFnzek_tqMTUM-8LpoedLaOgE2LNgU3tpVs4mMKiYJxH8CMIgb7LTatVj6I/exec";
+var KEY = (function () {
+  var k = '';
+  try { var m = /[#&]k=([^&]+)/.exec(location.hash); if (m) k = decodeURIComponent(m[1]).trim(); } catch (e) {}
+  try { if (k) localStorage.setItem(STORE_KEY, k); else k = localStorage.getItem(STORE_KEY) || ''; } catch (e) {}
+  return k;
+})();
+// @@KEY_END
+// @@API_BEGIN
+// 通信の入口(GitHub Pages版)。fetch は Content-Type を付けない(文字列を送ると text/plain の単純な送信になり、事前確認の通信が起きない)。
+// つながらない・JSONが返らない時は、少し待って最大4回やり直す。JSONで返った失敗(合言葉違いなど)はやり直しても同じなので、そのまま返す。
+var RETRY_WAITS = [1000, 2000, 4000, 8000];
+var TRY_TIMEOUT = 25000;
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+async function post(body) {
+  var ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, TRY_TIMEOUT);
+  try {
+    var res = await fetch(GAS_URL, {method: 'POST', body: JSON.stringify(body), signal: ctl.signal, credentials: 'omit'});
+    var text = await res.text(), j = null;
+    try { j = JSON.parse(text); } catch (e) {}
+    return j && typeof j === 'object' ? {json: j} : {err: 'HTTP ' + res.status};
+  } catch (e) {
+    return {err: e && e.name === 'AbortError' ? 'タイムアウト' : '通信エラー'};
+  } finally { clearTimeout(timer); }
+}
+async function apiRun(action, args) {
+  var body = Object.assign({}, args, {key: KEY, action: action}), last = '通信エラー';
+  for (var i = 0; i <= RETRY_WAITS.length; i++) {
+    var r = await post(body);
+    if (r.json) return r.json;
+    last = r.err;
+    if (i < RETRY_WAITS.length) { showErr('つながらないので、もう一度試しています…（' + (i + 1) + '/' + RETRY_WAITS.length + '）'); await sleep(RETRY_WAITS[i]); }
+  }
+  throw new Error(last);
+}
+function api(action, args, onOk, onFail) {
+  apiRun(action, args).then(onOk, function (e) { onFail(e && e.message); });
+}
+// @@API_END
+var DONE_STORE = 'sl_done_v1';
+
+function loadDone() {
+  try { return JSON.parse(localStorage.getItem(DONE_STORE) || '{}') || {}; } catch (e) { return {}; }
+}
+function saveDone(d) {
+  try { localStorage.setItem(DONE_STORE, JSON.stringify(d)); } catch (e) {}
+}
+function doneKey(it) { return it.id + '@' + it.addedAt; }
+
+function el(tag, cls, text) {
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+function link(cls, href, text, sub) {
+  var a = el('a', cls, text);
+  a.href = href;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  if (sub) a.appendChild(el('small', null, sub));
+  return a;
+}
+function yen(n) { return n > 0 ? '¥' + String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '価格不明'; }
+
+function render(data) {
+  var root = document.getElementById('list');
+  root.textContent = '';
+  var done = loadDone();
+  if (!data.items.length) {
+    root.appendChild(el('div', 'empty', 'リストは空です。PCの買取価格チェッカーから送ってください。'));
+    return;
+  }
+  data.items.forEach(function (it, idx) {
+    var card = el('div', 'card' + (done[doneKey(it)] ? ' done' : ''));
+    var head = el('div', 'head');
+    head.appendChild(el('div', 'name', it.name));
+    var mv = el('div', 'mv');
+    [['↑', -1, '上へ'], ['↓', 1, '下へ']].forEach(function (d) {
+      var b = el('button', null, d[0]);
+      b.type = 'button';
+      b.title = d[2];
+      b.setAttribute('aria-label', d[2]);
+      b.disabled = idx + d[1] < 0 || idx + d[1] >= data.items.length;
+      b.addEventListener('click', function () { move(idx, d[1]); });
+      mv.appendChild(b);
+    });
+    head.appendChild(mv);
+    card.appendChild(head);
+    var meta = el('div', 'meta');
+    meta.appendChild(el('span', null, yen(it.price)));
+    if (it.store) meta.appendChild(el('span', null, it.store));
+    if (it.jan) meta.appendChild(el('span', null, 'JAN ' + it.jan));
+    meta.appendChild(el('span', null, '追加 ' + it.addedLabel));
+    card.appendChild(meta);
+
+    var row = el('div', 'row');
+    var top = it.sites && it.sites[0];
+    if (top) row.appendChild(link('a1', top.url, '① ' + top.name + ' 経由', '還元率 ' + top.rate + '%（' + it.ratesLabel + '時点）'));
+    else row.appendChild(link('a1', data.fallbackUrl, '① ポイントサイトを選ぶ', '還元率が取れなかったので一覧を開く'));
+    row.appendChild(link('a2', it.url, '② 商品を開く'));
+    card.appendChild(row);
+
+    if (it.sites && it.sites.length > 1) {
+      var d = el('details');
+      d.appendChild(el('summary', null, '他のポイントサイト'));
+      it.sites.slice(1).forEach(function (s) { d.appendChild(link(null, s.url, s.name + '  ' + s.rate + '%')); });
+      card.appendChild(d);
+    }
+
+    var foot = el('div', 'foot');
+    var lab = el('label');
+    var cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = !!done[doneKey(it)];
+    cb.addEventListener('change', function () {
+      var cur = loadDone();
+      if (cb.checked) cur[doneKey(it)] = 1; else delete cur[doneKey(it)];
+      saveDone(cur);
+      card.className = 'card' + (cb.checked ? ' done' : '');
+    });
+    lab.appendChild(cb);
+    lab.appendChild(el('span', null, 'この端末で購入済み'));
+    foot.appendChild(lab);
+    var del = el('button', 'del', 'リストから消す（全端末）');
+    del.type = 'button';
+    del.addEventListener('click', function () {
+      if (!confirm('「' + it.name.slice(0, 40) + '」をリストから消します。全ての端末から消えます。')) return;
+      del.disabled = true;
+      api('remove', {id: it.id},
+        function (r) { if (r && r.ok) load(); else { del.disabled = false; showErr('消せませんでした: ' + (r && r.msg)); } },
+        function (msg) { del.disabled = false; showErr('消せませんでした: ' + msg); });
+    });
+    foot.appendChild(del);
+    card.appendChild(foot);
+    root.appendChild(card);
+  });
+}
+
+function showErr(msg) {
+  var e = document.getElementById('err');
+  e.textContent = msg || '';
+  e.hidden = !msg;
+}
+
+var current = null;     // 今画面に出している一覧
+var saveTimer = null;  // 並び順の保存待ち(連続で押した分をまとめる)
+var saving = false;
+
+function move(idx, d) {
+  var a = current && current.items, j = idx + d;
+  if (!a || j < 0 || j >= a.length) return;
+  var t = a[idx]; a[idx] = a[j]; a[j] = t;
+  render(current);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveOrder, 700);
+}
+
+function saveOrder() {
+  saveTimer = null;
+  saving = true;
+  api('reorder', {ids: current.items.map(function (x) { return x.id; })},
+    function (r) { saving = false; if (r && r.ok) showErr(''); else { showErr('並び順を保存できませんでした: ' + (r && r.msg)); load(); } },
+    function (msg) { saving = false; showErr('並び順を保存できませんでした: ' + msg); load(); });
+}
+
+function load() {
+  if (saveTimer || saving) return;   // 並び順の保存が終わる前に読み直すと、押した順番が元に戻って見えてしまう
+  var btn = document.getElementById('refresh');
+  if (!KEY) {
+    document.getElementById('list').textContent = '';
+    showErr('合言葉付きのURLで一度開いてください。');
+    return;
+  }
+  btn.disabled = true;
+  api('list', {},
+    function (data) {
+      btn.disabled = false;
+      if (!data || !data.ok) { current = null; document.getElementById('list').textContent = ''; showErr('読み込めませんでした: ' + (data && data.msg) + '（合言葉付きのURLで開き直してください）'); return; }
+      current = data; showErr(''); render(data);
+    },
+    function (msg) { btn.disabled = false; showErr('読み込めませんでした: ' + msg); });
+}
+
+document.getElementById('refresh').addEventListener('click', load);
+document.addEventListener('visibilitychange', function () { if (!document.hidden) load(); });
+load();
+</script>
+</body>
+</html>
